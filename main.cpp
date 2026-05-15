@@ -59,32 +59,17 @@ private:
     std::stringstream input(s);
     input >> meal;
 
-    std::string res_name;
-    input >> res_name;
+    std::string name;
+    input >> name;
 
-    if (auto it = std::find(res_names.begin(), res_names.end(), res_name);
-        it != res_names.end()) {
-      index_double_res = std::distance(res_names.begin(), it);
+    if (auto it = std::find(res_name.begin(), res_name.end(), name);
+        it != res_name.end()) {
+      index_double_res = std::distance(res_name.begin(), it);
     } else {
       throw std::runtime_error(s);
     }
     if (input.fail() || !input.eof()) {
       throw std::runtime_error(s);
-    }
-  }
-
-  void post_processing() {
-    for (size_t i = 0; i < room_adjacent.size(); ++i) {
-      for (auto j : room_adjacent[i]) {
-        if (std::find(room_adjacent[j].begin(), room_adjacent[j].end(), i) ==
-            room_adjacent[j].end()) {
-          room_adjacent[j].push_back(i);
-        }
-      }
-    }
-
-    for (auto &adj : room_adjacent) {
-      std::sort(adj.begin(), adj.end());
     }
   }
 
@@ -104,8 +89,6 @@ public:
     }
     std::getline(input, buf);
     parse_last_string(std::move(buf));
-
-    post_processing();
   }
   friend std::ostream &operator<<(std::ostream &out, const GameData &g) {
     out << "N " << g.room_adjacent.size() << " M " << g.meal << std::endl;
@@ -120,14 +103,14 @@ public:
       }
       out << std::endl;
     }
-    out << g.res_names[g.index_double_res] << std::endl;
+    out << g.res_name[g.index_double_res] << std::endl;
     return out;
   }
 
 private:
   constexpr static resurce res_cost = {7, 11, 23, 1};
-  constexpr static std::array<std::string_view, 4> res_names = {"iron", "gold",
-                                                                "gems", "Exp"};
+  constexpr static std::array<std::string_view, 4> res_name = {"iron", "gold",
+                                                               "gems", "Exp"};
   constexpr static resurce res_index_in_order = {2, 1, 0, 3};
   std::vector<adjacent> room_adjacent;
   std::vector<resurce> room_res;
@@ -138,21 +121,8 @@ private:
 struct Game {
 private:
   bool is_adjacent_unchecked(size_t from, size_t to) const {
-    auto &adj = data.room_adjacent[from];
+    auto &adj = room_adjacent[from];
     return std::find(adj.begin(), adj.end(), to) != adj.end();
-  }
-  void clear() {
-    current_meal = data.meal;
-    visited.clear();
-    viewed.clear();
-    room_res_farmed.clear();
-
-    visited.insert(0);
-    std::copy(data.room_adjacent[0].begin(), data.room_adjacent[0].end(),
-              std::insert_iterator(viewed, viewed.begin()));
-    room_res_farmed.resize(data.room_res.size(), false);
-    current_res = {0, 0, 0, 0};
-    current_index = 0;
   }
 
   bool spend_meal() {
@@ -164,10 +134,30 @@ private:
   }
 
 public:
-  Game(GameData data) : data(std::move(data)) {
-    clear();
-    for (auto &res : data.room_res) {
-      res[data.index_double_res] *= 2;
+  Game(GameData data)
+      : room_adjacent(data.room_adjacent), room_res(data.room_res),
+        res_cost(data.res_cost), res_name(data.res_name), res_index_in_order(),
+        current_index(0), current_res({0, 0, 0, 0}), current_meal(data.meal),
+        farmed_room_res(data.room_res.size(), false), viewed(), visited() {
+    res_cost[data.index_double_res] *= 2;
+    std::iota(res_index_in_order.begin(), res_index_in_order.end(), 0);
+    std::sort(res_index_in_order.begin(), res_index_in_order.end(),
+              [this](size_t i, size_t j) { return res_cost[i] > res_cost[j]; });
+
+    visited.insert(0);
+    std::copy(room_adjacent[0].begin(), room_adjacent[0].end(),
+              std::inserter(viewed, viewed.begin()));
+    for (size_t i = 0; i < room_adjacent.size(); ++i) {
+      for (auto j : room_adjacent[i]) {
+        if (std::find(room_adjacent[j].begin(), room_adjacent[j].end(), i) ==
+            room_adjacent[j].end()) {
+          room_adjacent[j].push_back(i);
+        }
+      }
+    }
+
+    for (auto &adj : room_adjacent) {
+      std::sort(adj.begin(), adj.end());
     }
   }
 
@@ -191,64 +181,70 @@ public:
   const std::set<size_t> get_visited() const { return visited; }
   const std::set<size_t> get_viewed() const { return viewed; }
   const adjacent &get_current_room_adjacents() const {
-    return data.room_adjacent[current_index];
+    return room_adjacent[current_index];
   }
   const resurce &get_current_room_res() const {
-    return data.room_res[current_index];
+    return room_res[current_index];
   }
   std::optional<std::reference_wrapper<const adjacent>>
   get_room_adjacents(size_t index) const {
     if (is_viewed(index)) {
-      return data.room_adjacent[index];
+      return room_adjacent[index];
     }
     return std::nullopt;
   }
   std::optional<std::reference_wrapper<const resurce>>
   get_room_res(size_t index) const {
     if (is_visited(index)) {
-      return data.room_res[index];
+      return room_res[index];
     }
     return std::nullopt;
   }
   std::string_view get_res_name(size_t res_index) const {
-    return data.res_names[res_index];
+    return res_name[res_index];
   }
-  const resurce &get_res_cost() const { return data.res_cost; }
+  const resurce &get_res_cost() const { return res_cost; }
   const std::array<size_t, 4> &get_res_index_in_order() const {
-    return data.res_index_in_order;
+    return res_index_in_order;
   }
 
   std::optional<std::pair<const adjacent &, const resurce &>> go(size_t index) {
     if (is_adjacent_unchecked(current_index, index) && spend_meal()) {
       visited.insert(index);
-      std::copy(data.room_adjacent[index].begin(),
-                data.room_adjacent[index].end(),
+      std::copy(room_adjacent[index].begin(), room_adjacent[index].end(),
                 std::insert_iterator(viewed, viewed.begin()));
 
       current_index = index;
-      return std::make_pair(data.room_adjacent[index], data.room_res[index]);
+      return std::make_pair(room_adjacent[index], room_res[index]);
     }
     return std::nullopt;
   }
   void farm_res(size_t res_index) {
-    if (room_res_farmed[current_index]) {
+    if (farmed_room_res[current_index]) {
       if (!spend_meal()) {
         return;
       }
     } else {
-      room_res_farmed[current_index] = true;
+      farmed_room_res[current_index] = true;
     }
     current_res[res_index] += 1;
   }
 
 private:
-  GameData data;
+  std::vector<adjacent> room_adjacent;
+  std::vector<resurce> room_res;
+
+  resurce res_cost;
+  std::array<std::string_view, 4> res_name;
+  resurce res_index_in_order;
+
+  size_t current_index;
+  resurce current_res;
   size_t current_meal;
+
   std::set<size_t> visited;
   std::set<size_t> viewed;
-  std::vector<bool> room_res_farmed;
-  resurce current_res;
-  size_t current_index;
+  std::vector<bool> farmed_room_res;
 };
 
 struct BasicPlayerAlgorithm {
@@ -305,8 +301,7 @@ private:
   void farm_res(Game &g, size_t res_index) {
     g.farm_res(res_index);
 
-    out << "collect " << res_index << " " << g.get_res_name(res_index)
-        << std::endl;
+    out << "collect " << g.get_res_name(res_index) << std::endl;
     out << "state " << g.get_current_room_index();
     auto res = g.get_current_res();
     for (size_t i = 0; i < res.size(); ++i) {
