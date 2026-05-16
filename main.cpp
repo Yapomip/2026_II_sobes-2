@@ -90,20 +90,20 @@ public:
     std::getline(input, buf);
     parse_last_string(std::move(buf));
   }
-  friend std::ostream &operator<<(std::ostream &out, const GameData &g) {
-    out << "N " << g.room_adjacent.size() << " M " << g.meal << std::endl;
-    out << "index_double_res " << g.index_double_res << std::endl;
-    for (size_t i = 0; i < g.room_adjacent.size(); ++i) {
-      for (auto v : g.room_adjacent[i]) {
+  friend std::ostream &operator<<(std::ostream &out, const GameData &gd) {
+    out << "N " << gd.room_adjacent.size() << " M " << gd.meal << std::endl;
+    out << "index_double_res " << gd.index_double_res << std::endl;
+    for (size_t i = 0; i < gd.room_adjacent.size(); ++i) {
+      for (auto v : gd.room_adjacent[i]) {
         out << v << " ";
       }
       out << std::endl << "   ";
-      for (auto c : g.room_res[i]) {
+      for (auto c : gd.room_res[i]) {
         out << c << " ";
       }
       out << std::endl;
     }
-    out << g.res_name[g.index_double_res] << std::endl;
+    out << gd.res_name[gd.index_double_res] << std::endl;
     return out;
   }
 
@@ -135,10 +135,11 @@ private:
 
 public:
   Game(GameData data)
-      : room_adjacent(data.room_adjacent), room_res(data.room_res),
-        res_cost(data.res_cost), res_name(data.res_name), res_index_in_order(),
+      : room_adjacent(std::move(data.room_adjacent)),
+        room_res(std::move(data.room_res)), res_cost(std::move(data.res_cost)),
+        res_name(std::move(data.res_name)), res_index_in_order(),
         current_index(0), current_res({0, 0, 0, 0}), current_meal(data.meal),
-        farmed_room_res(data.room_res.size(), false), viewed(), visited() {
+        farmed_room_res(room_res.size(), false), viewed(), visited() {
     res_cost[data.index_double_res] *= 2;
     std::iota(res_index_in_order.begin(), res_index_in_order.end(), 0);
     std::sort(res_index_in_order.begin(), res_index_in_order.end(),
@@ -159,6 +160,29 @@ public:
     for (auto &adj : room_adjacent) {
       std::sort(adj.begin(), adj.end());
     }
+  }
+  friend std::ostream &operator<<(std::ostream &out, const Game &g) {
+    out << "index: " << g.current_index << " meal " << g.current_meal
+        << std::endl
+        << "res: ";
+    for (size_t i = 0; i < g.current_res.size(); ++i) {
+      out << g.current_res[i] << " ";
+    }
+    out << std::endl;
+    for (size_t i = 0; i < g.res_cost.size(); ++i) {
+      out << g.res_name[i] << " " << g.res_cost[i] << std::endl;
+    }
+    for (size_t i = 0; i < g.room_adjacent.size(); ++i) {
+      for (auto v : g.room_adjacent[i]) {
+        out << v << " ";
+      }
+      out << std::endl << "   ";
+      for (auto c : g.room_res[i]) {
+        out << c << " ";
+      }
+      out << std::endl;
+    }
+    return out;
   }
 
   bool is_end() const { return current_meal == 0; }
@@ -435,7 +459,7 @@ int main(int argc, char *argv[]) {
   }
 
   // std::cout << game_data;
-  Game game(game_data);
+  Game game(std::move(game_data));
   if (argc == 1) {
     BasicPlayerAlgorithm bp(std::cout);
     bp.play(game);
